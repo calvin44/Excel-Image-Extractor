@@ -2,12 +2,17 @@ import os
 import argparse
 import shutil
 import json
+from sys import stdout
 from typing import List, Dict
 from openpyxl import load_workbook
 from openpyxl.drawing.spreadsheet_drawing import OneCellAnchor, TwoCellAnchor
 from openpyxl.utils import get_column_letter
 
+
 # pylint: disable=protected-access
+
+# Ensure stdout is set to UTF-8 encoding for proper output
+stdout.reconfigure(encoding='utf-8')
 
 
 def extract_images_from_excel(
@@ -55,10 +60,12 @@ def extract_images_from_excel(
 
     results = []
 
+    # Enumerate all images found in the worksheet
     for idx, image in enumerate(ws._images, start=1):
         anchor = image.anchor
 
         if isinstance(anchor, (OneCellAnchor, TwoCellAnchor)):
+            # Convert zero-based indexes to Excel-style notation
             col = anchor._from.col
             row = anchor._from.row
             col_num = col + 1
@@ -66,13 +73,16 @@ def extract_images_from_excel(
             col_letter = get_column_letter(col_num)
             cell = f"{col_letter}{row_num}"
 
+            # Compose output image path
             image_filename = f"image_{idx}_{cell}.png"
             image_path = os.path.abspath(
                 os.path.join(output_folder, image_filename))
 
+            # Save image data
             with open(image_path, "wb") as f:
                 f.write(image._data())
 
+            # Add image info to result list
             results.append({
                 "image_file": image_path,
                 "cell": cell,
@@ -84,6 +94,29 @@ def extract_images_from_excel(
 
 
 def main():
+    """
+    Command-line interface for extracting images from an Excel file.
+
+    Usage:
+        python extract_images.py <excel_file> <sheet_name> <output_folder>
+
+    On success, prints:
+    {
+        "success": true,
+        "sheet_name": "Sheet1",
+        "output_folder": "/abs/path/to/folder",
+        "image_count": 3,
+        "results": [...]
+    }
+
+    On error, prints:
+    {
+        "success": false,
+        "error": "Detailed error message"
+    }
+
+    Always exits with status code 0 on success, 1 on failure.
+    """
     parser = argparse.ArgumentParser(
         description="Extract images from Excel sheet and save to folder.")
     parser.add_argument("excel_file", help="Path to the Excel (.xlsx) file")
@@ -96,11 +129,22 @@ def main():
     try:
         results = extract_images_from_excel(
             args.excel_file, args.sheet_name, args.output_folder)
-    except Exception as e:  # pylint: disable=broad-except
-        print(f"[X ERROR] {e}")
-        exit(1)
 
-    print(json.dumps(results, indent=2))
+        output = {
+            "success": True,
+            "sheet_name": args.sheet_name,
+            "output_folder": os.path.abspath(args.output_folder),
+            "image_count": len(results),
+            "results": results
+        }
+
+        print(json.dumps(output, indent=2, ensure_ascii=False))
+
+    except Exception as e:  # pylint: disable=broad-except
+        print(json.dumps({
+            "success": False,
+            "error": str(e)
+        }, ensure_ascii=False))
 
 
 if __name__ == "__main__":
